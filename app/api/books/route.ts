@@ -1,0 +1,7 @@
+import {getDb} from '../../../db';
+import {books} from '../../../db/schema';
+import {eq,and} from 'drizzle-orm';
+import {getChatGPTUser} from '../../chatgpt-auth';
+export async function GET(){const u=await getChatGPTUser();if(!u)return Response.json({error:'Please sign in.'},{status:401});const rows=await getDb().select().from(books).where(eq(books.owner,u.userId));return Response.json(rows.map(r=>JSON.parse(r.data)));}
+export async function POST(req:Request){const u=await getChatGPTUser();if(!u)return Response.json({error:'Please sign in.'},{status:401});const b:any=await req.json();if(!b.id||typeof b.title!=='string'||new TextEncoder().encode(JSON.stringify(b)).length>1800000)return Response.json({error:'Book exceeds 1.8 MB total. Shorten the source or remove a photo.'},{status:400});const existing=await getDb().select().from(books).where(eq(books.id,b.id));if(existing.length&&existing[0].owner!==u.userId)return Response.json({error:'Not allowed'},{status:403});await getDb().insert(books).values({id:b.id,owner:u.userId,data:JSON.stringify(b)}).onConflictDoUpdate({target:books.id,set:{data:JSON.stringify(b)}});return Response.json({ok:true});}
+export async function DELETE(req:Request){const u=await getChatGPTUser();if(!u)return new Response(null,{status:401});const {id}=await req.json() as {id:string};await getDb().delete(books).where(and(eq(books.id,id),eq(books.owner,u.userId)));return Response.json({ok:true});}
